@@ -19,7 +19,7 @@ def main(seq):
 
     with open(original_mRNA_transcripts + "_exon_coordinates.txt", 'r') as ins:
         # 1. Open the sequences.FASTA file and split each sequences to separate files
-        # Sort the file content first by alphabetically, then numerically on s.start(which is local_alignment[8])
+        # Exon numbers aren't neccessarily in the correct order.
         for line in ins:
             local_alignment = line.rstrip().split("\t")
 
@@ -36,7 +36,7 @@ def main(seq):
         print transcript_infos
 
 
-
+    #is_there_any_match = False
     group_dictionary = dict()
     groups = list()
     group_counter = 1
@@ -93,6 +93,7 @@ def main(seq):
                             groups.append(group_counter)
                             print (local_alignment[0] + " and " + local_alignment[1] + " grouped to Group" + str(group_counter))
                             group_counter = group_counter + 1
+                            #is_there_any_match = True
                         elif (len(matching_exons) == 0):
                             print "Not grouped due to no matching exons or insufficient intron matches"
 
@@ -114,9 +115,10 @@ def main(seq):
                         for num in q_transc :
                             group_dictionary[num].append(str(local_alignment[1]))
 
-
-    print group_dictionary
-
+    if (len(group_dictionary) == 0):
+        print "No isoforms. All transcripts are expressed from separate genes"
+    elif (len(group_dictionary) >= 1):
+        print group_dictionary
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('seq', metavar = 'filename.FASTA', help='Original sequence file before running Genome Walker')
