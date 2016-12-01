@@ -2,12 +2,18 @@ import os
 import subprocess
 import argparse
 from Bio import SeqIO
+from Bio import AlignIO
+from Bio.Align import AlignInfo
+from StringIO import StringIO
 import re
+from collections import OrderedDict
+import collections
+
 
 def main(seq):
 
-    if not os.path.exists("./Final_sequences.fasta.nin"):
-        subprocess.call("makeblastdb -dbtype nucl -in Final_sequences.fasta", shell=True) # Contradicting with test.py!!
+#    if not os.path.exists("./Final_sequences.fasta.nin"):
+    subprocess.call("makeblastdb -dbtype nucl -in Final_sequences.fasta", shell=True) # Contradicting with test.py!!
         # Make blast database with the list of transcripts
     subprocess.call("blastn -query Final_sequences.fasta -db Final_sequences.fasta -outfmt 6 > b_Final_sequences.txt", shell=True)
   # Run sequence on blast to database made above, and redirect output into separate file
@@ -130,247 +136,357 @@ def main(seq):
                         for num in q_transc :
                             group_dictionary[num][local_alignment[1]] = dict()
 
+
+
     if (len(group_dictionary) == 0):
         print "No isoforms. All transcripts are expressed from separate genes"
+
     elif (len(group_dictionary) >= 1):
         print group_dictionary
         print groups
+        print "\n \n \n \n Starting gene model construction \n \n \n \n \n \n \n \n \n \n "
 
 
 
-    #
-    # Each transcript have been grouped. Not time to stitch the information up to build a gene model for each group
-    #
+        #
+        # Each transcript have been grouped. Not time to stitch the information up to build a gene model for each group
+        #
 
-    # Save each transcript sequence in individual variables
-    for group_num in group_dictionary:
-        for record in SeqIO.parse("Final_sequences.fasta", "fasta"):
-            if (record.name in group_dictionary[group_num]):
-                group_dictionary[group_num][record.name] = record.seq
-
-    print group_dictionary
-
+        # Save each transcript sequence in individual variables
+        for group_num in group_dictionary:
+            for record in SeqIO.parse("Final_sequences.fasta", "fasta"):
+                if (record.name in group_dictionary[group_num]):
+                    group_dictionary[group_num][record.name] = record.seq
+        print group_dictionary
 
 
-    # Name genes by group numbers
-    # Initialise gene model by first taking the biggest transcript
-    if not os.path.exists("./gene_models/"):
-        subprocess.call("mkdir gene_models", shell=True) # Contradicting with test.py!!
+
+        # Name genes by group numbers
+        # Initialise gene model by first taking the biggest transcript
+        if not os.path.exists("./gene_models/"):
+            subprocess.call("mkdir gene_models", shell=True) # Contradicting with test.py!!
 
 
-    gene_model_dict = dict()
-    if (len(gene_model_dict) == 0):
+        gene_model_dict = dict()
+        largest_transcripts = dict()
+        if (len(gene_model_dict) == 0):
+            for gene_num in group_dictionary:
+                if (gene_num not in largest_transcripts):
+                    largest_transcripts[gene_num] = str()
+                for transcript in group_dictionary[gene_num]:
+                    if (largest_transcripts[gene_num] == ''):
+                        print " YES IT IS EMPTY "
+                        largest_transcripts[gene_num] = transcript
+                        print ("Largest transcript for group " + str(gene_num) + " is " + str(largest_transcripts[gene_num]))
+                        print len(group_dictionary[gene_num][str(largest_transcripts[gene_num])])
+
+                    elif (len(group_dictionary[gene_num][str(largest_transcripts[gene_num])]) >= 1) and (len(group_dictionary[gene_num][transcript]) > len(group_dictionary[gene_num][str(largest_transcripts[gene_num])])):
+                        largest_transcripts[gene_num] = transcript
+                        print ("Largest transcript for group " + str(gene_num) + " is " + str(largest_transcripts[gene_num]))
+
+                # Save the largest transcript sequence of each gene as the gene_model
+                with open('gene_models/gene_model' + str(gene_num) + '.fasta.txt', 'w') as ins:
+                    ins.write(">gene_model" + str(gene_num) + "\n")
+                    ins.write(str(group_dictionary[gene_num][str(largest_transcripts[gene_num])])+"\n")
+                    ins.close()
+
         for gene_num in group_dictionary:
-            largest_transcript = str()
-            for transcript in group_dictionary[gene_num]:
-                if (largest_transcript == ''):
-                    largest_transcript = transcript
-                elif (len(largest_transcript) >= 1) and (len(group_dictionary[gene_num][transcript]) > len(group_dictionary[gene_num][largest_transcript])):
-                    largest_transcript = transcript
-                    print largest_transcript
-
-            # Save the largest transcript sequence of each gene as the gene_model
-            with open('gene_models/gene_model' + str(gene_num) + '.fasta.txt', 'w') as ins:
-                ins.write(">gene_model" + str(gene_num) + "\n")
-                ins.write(str(group_dictionary[gene_num][largest_transcript])+"\n")
-                ins.close()
 
 
-
-    Current_gene_model = ("gene_model" + str(gene_num))
-
-    for strand in group_dictionary[gene_num]: # DOES THIS WORK WHEN THERE IS MORE THAN ONE GROUP?? HOW THE HELL DOES THIS KNOW WHAT gene_num IS???
-        subprocess.call("blastn -query gene_models/gene_model" + str(gene_num) + ".fasta.txt -subject gene_models/gene_model" + str(gene_num) + ".fasta.txt -perc_identity 100 -outfmt 6 > n_coordinates.fasta.txt", shell=True)  # Hard coded
-        with open("n_coordinates.fasta.txt", 'r') as ins:
-            hundred_percent_coordinates[Current_gene_model] = dict()
-            hundred_percent_coordinates[Current_gene_model]['start'] = list()
-            hundred_percent_coordinates[Current_gene_model]['end'] = list()
-            for line in ins:
-                local_alignment = line.rstrip().split("\t") # Open the result file and split the tabs
-                if (local_alignment[0] == local_alignment[1]) and (float(local_alignment[2]) == 100.000) and (local_alignment[6] == local_alignment[8]) and (local_alignment[7] == local_alignment[9]):
-                    hundred_percent_coordinates[local_alignment[0]]['start'].append(local_alignment[6])
-                    hundred_percent_coordinates[local_alignment[0]]['end'].append(local_alignment[7])
-            hundred_percent_coordinates[Current_gene_model]['start'].sort(key=int)
-            hundred_percent_coordinates[Current_gene_model]['end'].sort(key=int)
-
-
-        for record in SeqIO.parse("gene_models/gene_model" + str(gene_num) + ".fasta.txt", "fasta"):
-            gene_model_dict[record.name] = record.seq
-
-
-        # Save the single transcript data into a separate file to run blast against gene_model
-        with open('tmp_compare_seq.fasta.txt', 'w') as ins:
-            ins.write(">" + strand + "\n")
-            ins.write(str(group_dictionary[gene_num][strand])+"\n")
-            ins.close()
-
-        print ("length of " + strand + " " + str(len(group_dictionary[gene_num][strand])))
-        subprocess.call("blastn -query gene_models/" + Current_gene_model + ".fasta.txt -subject tmp_compare_seq.fasta.txt -outfmt 6 > tmp_blast.txt", shell=True)  # Hard coded
-        # SOMETHING WRONG WITH THIS BLAST!!!
+#
+#   Start individual gene_model stitching process
+#
+        #    count = 0
+            Current_gene_model = ("gene_model" + str(gene_num))
+            for strand in group_dictionary[gene_num]:
+                First_chunk = True # To detect if any
+                if (strand == largest_transcripts[gene_num]):
+                    print "THIS IS THE LARGEST STRAND!!"
+                    continue
+                else :
+                    subprocess.call("blastn -query gene_models/" + Current_gene_model + ".fasta.txt -subject gene_models/" + Current_gene_model + ".fasta.txt -perc_identity 100 -outfmt 6 > n_coordinates.fasta.txt", shell=True)
+                    with open("n_coordinates.fasta.txt", 'r') as ins:
+                        hundred_percent_coordinates[Current_gene_model] = dict()
+                        hundred_percent_coordinates[Current_gene_model]['start'] = list()
+                        hundred_percent_coordinates[Current_gene_model]['end'] = list()
+                        for line in ins:
+                            local_alignment = line.rstrip().split("\t") # Open the result file and split the tabs
+                            if (local_alignment[0] == local_alignment[1]) and (float(local_alignment[2]) == 100.000) and (local_alignment[6] == local_alignment[8]) and (local_alignment[7] == local_alignment[9]):
+                                hundred_percent_coordinates[local_alignment[0]]['start'].append(local_alignment[6])
+                                hundred_percent_coordinates[local_alignment[0]]['end'].append(local_alignment[7])
+                        hundred_percent_coordinates[Current_gene_model]['start'].sort(key=int)
+                        hundred_percent_coordinates[Current_gene_model]['end'].sort(key=int)
 
 
-        with open("tmp_blast.txt", 'r') as ins: # Hard coded
-            chunk_counter = 1
-            matching_coordinates = dict()
-            current_transcript = str()
-            for line in ins:
-                local_alignment = line.rstrip().split("\t")
-                current_transcript = local_alignment[1]
-                if (float(local_alignment[2]) >= 95.000): # MANIPULATE THIS NUMBER!!!
-                    matching_coordinates[chunk_counter] = list((local_alignment[6], local_alignment[7], local_alignment[8], local_alignment[9])) #                        # Do I need [6] and [7] coordinates??
-                    chunk_counter = chunk_counter + 1
+                    for record in SeqIO.parse("gene_models/gene_model" + str(gene_num) + ".fasta.txt", "fasta"):
+                        gene_model_dict[record.name] = record.seq
 
 
+                    # Save the single transcript data into a separate file to run blast against gene_model
+                    with open('tmp_compare_seq.fasta.txt', 'w') as ins:
+                        ins.write(">" + strand + "\n")
+                        ins.write(str(group_dictionary[gene_num][strand])+"\n")
+                        ins.close()
 
-            print ("All Matching Coordinates \n" + str(matching_coordinates))
-
-
-
-            # Identifying what parts to insert
-            insert_start_coordinates = list()
-            insert_end_coordinates = list()
-            base_insert_coordinate = int()
-            inserting_seq = list()
-            matched_chunk = str()
-            matched_already_added = dict() # To prevent blast result on the same exon causing a duplicate exon adding
-            matched_already_added['start'] = list()
-            matched_already_added['end'] = list()
-            new_seq_info = True
-            chunks_covered = 0
-            Done = 0
-
-#START FROM HERE!!
-            for matching_self in range(0,len(hundred_percent_coordinates[current_transcript]['start'])):
-                for chunks in matching_coordinates:
-    #                print (str(int(matching_coordinates[chunks][2])) + " >= " + str(int(hundred_percent_coordinates[current_transcript]['start'][matching_self])))
-    #                print (str(int(matching_coordinates[chunks][3])) + " <= " + str(int(hundred_percent_coordinates[current_transcript]['end'][matching_self])))
-                    if (int(matching_coordinates[chunks][2]) >= int(hundred_percent_coordinates[current_transcript]['start'][matching_self])) and (int(matching_coordinates[chunks][3]) <= int(hundred_percent_coordinates[current_transcript]['end'][matching_self])):
-                        print (str(int(hundred_percent_coordinates[current_transcript]['start'][matching_self])) + " <= " + str(int(matching_coordinates[chunks][2])) + "-" + str(int(matching_coordinates[chunks][3])) + " <= " + str(int(hundred_percent_coordinates[current_transcript]['end'][matching_self])))
-                        print "YES! Hit matched"
-                        new_seq_info = False
-                        matched_chunk = int(matching_coordinates[chunks][0])
-                        print hundred_percent_coordinates[current_transcript]['start'][matching_self]
-                        print hundred_percent_coordinates[current_transcript]['end'][matching_self]
-                        a = hundred_percent_coordinates[Current_gene_model]['start']
+                    print ("length of " + strand + " " + str(len(group_dictionary[gene_num][strand])))
+                    subprocess.call("blastn -query gene_models/" + Current_gene_model + ".fasta.txt -subject tmp_compare_seq.fasta.txt -outfmt 6 -culling_limit 1 > tmp_blast.txt", shell=True)
+#blastn -query gene_models/gene_model1.fasta.txt -subject tmp_compare_seq.fasta.txt -outfmt 7
 
 
-                        # Find the insert coordinate in master transcript
-                        for index in range(0, len(a)): # Hard coded
-    #                        print matched_chunk
-                            if (int(a[index]) <= matched_chunk) and (matched_chunk <= int(hundred_percent_coordinates[Current_gene_model]['end'][index])): # Between Starts?
+                    with open("tmp_blast.txt", 'r') as ins:
+                        chunk_counter = 1
+                        matching_coordinates = dict()
+                        current_transcript = str()
+                        for line in ins:
+                            local_alignment = line.rstrip().split("\t")
+                            current_transcript = local_alignment[1]
+                            if (float(local_alignment[2]) >= 95.000): # MANIPULATE THIS NUMBER!!!
+                                matching_coordinates[int(local_alignment[6])] = list((local_alignment[6], local_alignment[7], local_alignment[8], local_alignment[9], chunk_counter)) #                        # Do I need [6] and [7] coordinates??
+                                chunk_counter = chunk_counter + 1
+
+                        #print hundred_percent_coordinates['var_L']
+                        print matching_coordinates
 
 
-                                #assert base_insert_coordinate <= int(a[index])
-
-                                base_insert_coordinate = int(a[index]) - 1  # -1 as well. DOUBLE CHECK THIS!!!
-                                print ("Base insert coordinate: " + str(base_insert_coordinate))
-                                # THIS SHOULD ALWAYS BE INCREASING!!!
-                                # SOMETHING WRONG WITH THE CALCULATION!!
-
-                                break
+                        matching_coordinates = collections.OrderedDict(sorted(matching_coordinates.items()))
 
 
-                        # ADD LEFT
-                        inserting_seq.append(str(gene_model_dict[Current_gene_model])[Done:base_insert_coordinate]) # Hard coded # !! Check if I am adding a single base in between !!
-                        print ("ADDING " + str(len(str(gene_model_dict[Current_gene_model])[Done:base_insert_coordinate])) + " bases")
-                        print "Added Left"
-                        # ADD NEW
-
-
-                        for index in range(0, len(insert_start_coordinates)):
-                            insert_start = int(insert_start_coordinates[index]) - 1 # DOUBLE CHECK THIS MINUS 1!!
-                            insert_end = int(insert_end_coordinates[index])
-
-                            inserting_seq.append(str(group_dictionary[1][current_transcript])[insert_start:insert_end])
-                            inserting_seq.append("N"*500)
-                            print ("ADDING " + str(len(str(group_dictionary[1][current_transcript])[insert_start:insert_end])) + " +500" + " bases")
-                            print ("Length of gene_model: " + str(len("".join(inserting_seq))))
-                            print "Added New"
-
-                        # ADD MATCHED
-                        print hundred_percent_coordinates[Current_gene_model]
-                        print ("matching coordinates[chunks]: " + str(matching_coordinates[chunks]))
-                        end_of_match = int(matching_coordinates[chunks][1])
-                        print ("BEFORE end_of_match: " + str(end_of_match))
-                        print (str(int(hundred_percent_coordinates[Current_gene_model]['start'][index])) + " <= " + str(end_of_match) + " <= " + str(int(hundred_percent_coordinates[Current_gene_model]['end'][index])))
-
-
-                        if (int(hundred_percent_coordinates[Current_gene_model]['start'][index]) <= end_of_match) and (end_of_match <= int(hundred_percent_coordinates[Current_gene_model]['end'][index])):
-                            end_of_match = int(hundred_percent_coordinates[Current_gene_model]['end'][index])
-                            print ("AFTER end_of_match: " + str(end_of_match))
-
-                        # Only add MATCHED if not already added.
-                        if (end_of_match not in matched_already_added['end']) and (base_insert_coordinate not in matched_already_added['start']):
-                            inserting_seq.append(str(gene_model_dict[Current_gene_model])[base_insert_coordinate:end_of_match]) # THIS LINE OF CODE IS MESSING THIS UP!!
-                            inserting_seq.append("N"*500)
-                            matched_already_added['end'].append(end_of_match)
-                            matched_already_added['start'].append(base_insert_coordinate)
-                            print ("ADDING " + str(len(str(gene_model_dict[Current_gene_model])[base_insert_coordinate:end_of_match])) + " +500"  + " bases")
-                            print ("Length of gene_model: " + str(len("".join(inserting_seq))))
-                            print "Added Matched"
-                            Done = end_of_match + 500 # Added 500 Ns
-                        else :
-                            print ("Length of gene_model: " + str(len("".join(inserting_seq))))
-                            print "Matched exon already added. Skipping."
-                        # GET DONE COORDINATE
+                        print ("All Matching Coordinates \n" + str(matching_coordinates) + "\n")
 
 
 
-                        print ("Base insert coordinates: "+ str(base_insert_coordinate))
-                        print ("End of match: "+ str(end_of_match))
-                        print ("Matching coordinates: " + str(matching_coordinates))
-                        print ("Chunks covered: " + str(chunks_covered))
-                        print ("Length of matching_coordinates: " + str(len(matching_coordinates)))
-                        print ("Done: "+ str(Done))
-
-
-
-
-                        # WIPE EVERY LIST AND UPDATE
+                        # Identifying what parts to insert
                         insert_start_coordinates = list()
                         insert_end_coordinates = list()
-                        chunks_covered = chunks_covered + 1
-
-
-                    if (chunks_covered == len(matching_coordinates)):
-                        print "No more new sequence to add. Adding remaining sequences"
-
-                        # ADD REMAINING SEQUENCE OF GENE_MODEL
-                        inserting_seq.append(str(gene_model_dict[Current_gene_model])[Done:])
+                        base_insert_coordinate = int()
+                        inserting_seq = list()
+                        matched_chunk = str()
+                        b_matched_already_added = dict() # To prevent blast result on the same exon causing a duplicate exon adding
+                        b_matched_already_added['start'] = list()
+                        b_matched_already_added['end'] = list()
+                        c_matched_already_added = dict() # To prevent blast result on the same exon causing a duplicate exon adding
+                        c_matched_already_added['start'] = list()
+                        c_matched_already_added['end'] = list()
+                        new_seq_info = True
                         chunks_covered = 0
-                        print ("Length of gene_model: " + str(len("".join(inserting_seq))))
-                        print "Finish \n \n \n \n \n \n \n \n \n \n \n \n \n \n \n"
-                        break
+                        Done = 0
 
 
-                if (new_seq_info == True):
-                    insert_start_coordinates.append(int(hundred_percent_coordinates[current_transcript]['start'][matching_self]))
-                    insert_end_coordinates.append(int(hundred_percent_coordinates[current_transcript]['end'][matching_self]))
-                    print "Found new sequence information!"
-    #            else:
-    #                if (len(inserting_seq) > 0): #??
-    #                    continue
+                        for matching_self in range(0,len(hundred_percent_coordinates[current_transcript]['start'])):
+                            for chunks in matching_coordinates:
+                                if (int(matching_coordinates[chunks][2]) >= int(hundred_percent_coordinates[current_transcript]['start'][matching_self])) and (int(matching_coordinates[chunks][3]) <= int(hundred_percent_coordinates[current_transcript]['end'][matching_self])):
+                                    print (str(int(hundred_percent_coordinates[current_transcript]['start'][matching_self])) + " <= " + str(int(matching_coordinates[chunks][2])) + "-" + str(int(matching_coordinates[chunks][3])) + " <= " + str(int(hundred_percent_coordinates[current_transcript]['end'][matching_self])))
+                                    print "YES! Hit matched"
+                                    if (First_chunk == True):
+                                        print "This is the first match"
+                                        First_chunk = False
 
-            # WRITE TO A NEW FILE
-    #        ite = ite + 1
-            with open('gene_models/' + Current_gene_model + '.fasta.txt', 'w') as ins:
-                ins.write(">" + Current_gene_model + "\n")
-    #            ins.write(">gene_model1.iter" + str(ite) +"\n")
-                ins.write("".join(inserting_seq)+"\n")
-                ins.close()
+                                        # Was there any new sequence information before this?
+                                        print insert_start_coordinates
+                                        print insert_end_coordinates
 
-            # Reset after writing gene_model to a file
-            inserting_seq = list()
-        #break
-
-
-
+                                    if (int(matching_coordinates[chunks][0]) <= Done) and (int(matching_coordinates[chunks][1]) <= Done):
+                                        print (str(matching_coordinates[chunks][0]) + " <= " + str(Done))
+                                        print (str(matching_coordinates[chunks][1]) + " <= " + str(Done))
+                                        print "False alarm. Already added"
+                                    new_seq_info = False
+                                    matched_chunk = int(matching_coordinates[chunks][0])
+                                    a = hundred_percent_coordinates[Current_gene_model]['start']
 
 
+                                    # Find the insert coordinate in master transcript
+                                    for index in range(0, len(a)): # Hard coded
+                #                        print matched_chunk
+                                        if (int(a[index]) <= matched_chunk) and (matched_chunk <= int(hundred_percent_coordinates[Current_gene_model]['end'][index])):
+
+                                            #assert base_insert_coordinate <= int(a[index])
+                                            base_insert_coordinate = int(a[index]) - 1 # -1 as well. DOUBLE CHECK THIS!!!
+                                            print (str(a[index]) + " <= " + str(matched_chunk) + " <= " + str(hundred_percent_coordinates[Current_gene_model]['end'][index]))
+                                            print ("Base insert coordinate: " + str(base_insert_coordinate))
+
+                                            break
+
+
+                                    # ADD LEFT
+                                    inserting_seq.append(str(gene_model_dict[Current_gene_model])[Done:base_insert_coordinate]) # !! Check if I am adding a single base in between !!
+                                    print ("ADDING " + str(len(str(gene_model_dict[Current_gene_model])[Done:base_insert_coordinate])) + " bases")
+
+
+
+                                    print "Added Left"
+
+
+
+                                    # ADD NEW
+                                    for index in range(0, len(insert_start_coordinates)):
+                                        insert_start = int(insert_start_coordinates[index]) - 1  # The -1 is needed to not miss the first base
+                                        insert_end = int(insert_end_coordinates[index])
+
+                                        inserting_seq.append(str(group_dictionary[gene_num][current_transcript])[insert_start:insert_end])
+                                        inserting_seq.append("N"*500)
+                                        print ("ADDING " + str(len(str(group_dictionary[gene_num][current_transcript])[insert_start:insert_end])) + " + 500N bases")
+                                        print ("Length of gene_model: " + str(len("".join(inserting_seq))))
+                                        print "Added New"
+
+                                    # ADD MATCHED
+                                    # Calculate the size of base exon
+                                    print hundred_percent_coordinates[Current_gene_model]
+                                    print ("matching coordinates[chunks]: " + str(matching_coordinates[chunks]))
+                                    end_of_match = int(matching_coordinates[chunks][1])
+                                    print ("BEFORE end_of_match: " + str(end_of_match))
+                                    print (str(int(hundred_percent_coordinates[Current_gene_model]['start'][index])) + " <= " + str(end_of_match) + " <= " + str(int(hundred_percent_coordinates[Current_gene_model]['end'][index])))
+
+
+                                    if (int(hundred_percent_coordinates[Current_gene_model]['start'][index]) <= end_of_match) and (end_of_match <= int(hundred_percent_coordinates[Current_gene_model]['end'][index])):
+                                        end_of_match = int(hundred_percent_coordinates[Current_gene_model]['end'][index])
+                                        print ("AFTER end_of_match: " + str(end_of_match))
+
+                                    # Calculate the size of compare exon
+                                    comp_ex_start_site = int()
+                                    comp_ex_end_site = int()
+                                    base_ex_start_site = int()
+                                    base_ex_end_site = int()
+                                    for coord in range(0, len(hundred_percent_coordinates[Current_gene_model]['start'])):
+                                        base_ex_start_site = int(hundred_percent_coordinates[Current_gene_model]['start'][coord])
+                                        base_ex_end_site = int(hundred_percent_coordinates[Current_gene_model]['end'][coord])
+
+                                        #print "OVER HERE!!!"
+                                        #print (str(base_ex_start_site) + ' <= ' + str(matching_coordinates[chunks][0])) + ' - ' + str((matching_coordinates[chunks][1]) + ' <= ' + str(base_ex_end_site))
+                                        if (base_ex_start_site <= int(matching_coordinates[chunks][0])) and (int(matching_coordinates[chunks][1]) <= base_ex_end_site):
+                                            print ("Length of Gene Model Exon: " + str(len(str(gene_model_dict[Current_gene_model])[base_ex_start_site:base_ex_end_site])))
+                                            break
+                                    for coord in range(0, len(hundred_percent_coordinates[strand]['start'])):
+                                        comp_ex_start_site = int(hundred_percent_coordinates[strand]['start'][coord])
+                                        comp_ex_end_site = int(hundred_percent_coordinates[strand]['end'][coord])
+                                        #print "OVER HERE!!!22222"
+
+                                        #print (str(comp_ex_start_site) + ' <= ' + str(matching_coordinates[chunks][2])) + ' - ' + str((matching_coordinates[chunks][3]) + ' <= ' + str(comp_ex_end_site))
+                                        if (comp_ex_start_site <= int(matching_coordinates[chunks][2])) and (int(matching_coordinates[chunks][3]) <= comp_ex_end_site):
+                                            print ("Length of " + str(strand) + " Exon: " + str(len(str(group_dictionary[gene_num][strand])[comp_ex_start_site:comp_ex_end_site])))
+                                            break
+
+
+                                    # Check to see if there is a difference in length between base[exon] and compare[exon]
+                                    # Two options
+                                    # IF the base matched is larger or same, then add that
+                                    # ELIF the compare matched is larger, Run MAFFT and add consensus sequence
+                                    print comp_ex_start_site
+                                    print comp_ex_end_site
+                                    if ((comp_ex_start_site in c_matched_already_added['start']) and (comp_ex_end_site in c_matched_already_added['end'])) or ((base_ex_start_site in c_matched_already_added['start']) and (base_ex_end_site in c_matched_already_added['end'])):
+                                        print "Already added. Move on"
+                                        print "Second Condition Met"
+                                        print c_matched_already_added
+                                        Done = end_of_match + 500
+
+                                    elif (len(str(gene_model_dict[Current_gene_model])[base_ex_start_site:base_ex_end_site]) != len(str(group_dictionary[gene_num][strand])[comp_ex_start_site:comp_ex_end_site])):
+                                    #    print (str(gene_model_dict[Current_gene_model])[base_insert_coordinate:end_of_match] + " \n " + str(group_dictionary[gene_num][strand])[comp_ex_start_site:comp_ex_end_site])
+                                        c_matched_already_added['start'].append(comp_ex_start_site)
+                                        c_matched_already_added['end'].append(comp_ex_end_site)
+                                        c_matched_already_added['start'].append(base_ex_start_site)
+                                        c_matched_already_added['end'].append(base_ex_end_site)
+                                        print "First Condition Met"
+
+
+                                        with open('gene_models/tmp_mafft.fasta.txt', 'w') as ins:
+                                            ins.write(">Gene_model_exon" + "\n" + str(str(gene_model_dict[Current_gene_model])[base_insert_coordinate:end_of_match]) + "\n")
+                                            ins.write(">" + str(strand) + "_exon \n" + str((str(group_dictionary[gene_num][strand])[comp_ex_start_site:comp_ex_end_site])) + "\n")
+                                            ins.close()
+
+
+                                        # MAFFT
+                                        p1 = subprocess.Popen("mafft --quiet --auto gene_models/tmp_mafft.fasta.txt", shell=True, universal_newlines = True, stdout=subprocess.PIPE)
+                                        stdout, stderr = p1.communicate()
+                                        align = AlignIO.read(StringIO(stdout), "fasta")
+#                                        print(align)
+                                        summary_align = AlignInfo.SummaryInfo(align)
+                                        consensus = summary_align.dumb_consensus(ambiguous='N')
+                                        print "MAFFT CONSENSUS!!!"
+#                                        print str(consensus).upper()
+                                        inserting_seq.append(str(consensus).upper())
+                                        inserting_seq.append("N"*500)
+                                        print ("ADDING " + str(len(str(consensus).upper())) + " +500"  + " bases")
+                                        print "Added Matched (MAFFT)"
+                                        print c_matched_already_added
+                                        Done = end_of_match + 500
+
+#
 
 
 
 
+                                    # Only add MATCHED if not already added.
+                                    elif (end_of_match not in b_matched_already_added['end']) and (base_insert_coordinate not in b_matched_already_added['start']):
+                                        inserting_seq.append(str(gene_model_dict[Current_gene_model])[base_insert_coordinate:end_of_match]) # THIS LINE OF CODE IS MESSING THIS UP!!
+                                        inserting_seq.append("N"*500)
+                                        b_matched_already_added['end'].append(end_of_match)
+                                        b_matched_already_added['start'].append(base_insert_coordinate)
+                                        print "Third Condition Met"
+                                        print b_matched_already_added
+                                        print ("ADDING " + str(len(str(gene_model_dict[Current_gene_model])[base_insert_coordinate:end_of_match])) + " +500"  + " bases")
+                                        print "Added Matched"
+
+                                        Done = end_of_match + 500 # Added 500 Ns
+                                    else :
+                                        print "Fourth Condition Met"
+                                        print ("Length of gene_model: " + str(len("".join(inserting_seq))))
+                                        print "Matched exon already added. Skipping."
+                                    # GET DONE COORDINATE
+
+
+
+
+
+
+
+                                    # WIPE EVERY LIST AND UPDATE
+                                    insert_start_coordinates = list()
+                                    insert_end_coordinates = list()
+                                    chunks_covered = chunks_covered + 1
+
+                                    print (" \n \n \n \n \nBase insert coordinates: "+ str(base_insert_coordinate))
+                                    print ("End of match: "+ str(end_of_match))
+                                    #print ("Matching coordinates: " + str(matching_coordinates))
+                                    print ("Chunks covered: " + str(chunks_covered))
+                                    #print ("Length of matching_coordinates: " + str(len(matching_coordinates)))
+                                    print ("Length of gene_model: " + str(len("".join(inserting_seq))))
+                                    print ("Done: "+ str(Done) + " \n \n \n \n")
+
+
+                                if (chunks_covered == len(matching_coordinates)):
+                                    print "No more new sequence to add. Adding remaining sequences"
+
+                                    # ADD REMAINING SEQUENCE OF GENE_MODEL
+                                    inserting_seq.append(str(gene_model_dict[Current_gene_model])[Done:])
+                                    chunks_covered = 0
+                                    print ("Length of gene_model: " + str(len("".join(inserting_seq))))
+                                    print ("Length of gene_model: " + str(len(inserting_seq)))
+                                    print "Finish \n \n \n \n \n \n \n \n \n \n \n \n \n \n \n"
+
+                                    break
+
+
+                            if (new_seq_info == True):
+                                insert_start_coordinates.append(int(hundred_percent_coordinates[current_transcript]['start'][matching_self]))
+                                insert_end_coordinates.append(int(hundred_percent_coordinates[current_transcript]['end'][matching_self]))
+                                print "Found new sequence information!"
+                #            else:
+                #                if (len(inserting_seq) > 0): #??
+                #                    continue
+
+                        # WRITE TO A NEW FILE
+                #        ite = ite + 1
+                        with open('gene_models/' + Current_gene_model + '.fasta.txt', 'w') as ins:
+                            ins.write(">" + Current_gene_model + "\n")
+                #            ins.write(">gene_model1.iter" + str(ite) +"\n")
+                            ins.write("".join(inserting_seq)+"\n")
+                            ins.close()
+
+                        # Reset after writing gene_model to a file
+                        inserting_seq = list()
+                #    count = count + 1
+                #    if (count == 3):
+                #        break
+        #print group_dictionary
 
 
 
@@ -384,6 +500,8 @@ main(args.seq)
 # After blast, take each start and end coordinates from each transcripts and store them as exon coordinates
 
 # dict[transcript_name][exon_num][start_coordinate, end_coordinate]
+
+
 
 
 #
