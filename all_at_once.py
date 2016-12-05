@@ -276,7 +276,7 @@ def main(args):
             for Gene in Gene_model:
                 print ("Gene: " + str(Gene))
                 for chunks in sorted(Gene_model[Gene], key=int):
-                    print Gene_model[Gene][chunks]
+                    print ("Chunk" + str(chunks) + ": " + str(sorted(Gene_model[Gene][chunks], key=str)))
                     for chunk2 in sorted(Gene_model[Gene], key=int):
                         if (sorted(Gene_model[Gene][chunks].items()) == sorted(Gene_model[Gene][chunk2].items())) and (chunks != chunk2):
                             if (len(duplicates) == 0):
@@ -291,8 +291,77 @@ def main(args):
                 for dupes in duplicates:
                     delete = duplicates[dupes][1]
                     if (delete in Gene_model[Gene]):
+                        print ('deleted: ' + str(sorted(Gene_model[Gene][delete], key=str)))
                         del Gene_model[Gene][delete]
-                        print ('deleted: ' + str(Gene_model[Gene][delete]))
+
+
+
+
+            duplicates = dict()
+            print "Finding duplicate chunks"
+            for Gene in Gene_model:
+                print ("Gene: " + str(Gene))
+                for chunks in sorted(Gene_model[Gene], key=int):
+                    for single_chunk in Gene_model[Gene][chunks]:
+                        for chunk2 in sorted(Gene_model[Gene], key=int):
+                            if (single_chunk in Gene_model[Gene][chunk2]):
+                                if (len(duplicates) == 0):
+                                    if (chunks != chunk2):
+                                        duplicates[chunks + "_" + chunk2] = [chunks, chunk2]
+                                else:
+                                    if (chunks != chunk2):
+                                        if (str(chunk2 + "_" + chunks) not in duplicates):
+                                            duplicates[chunks + "_" + chunk2] = [chunks, chunk2]
+                                break
+            # MERGE DUPLICATED CHUNKS
+
+            print "Merging duplicated chunks"
+            print duplicates
+            for Gene in Gene_model:
+                print ("Gene: " + str(Gene))
+
+                for dupes in duplicates.values():
+
+                    if (dupes[0] in Gene_model[Gene]) and (dupes[1] in Gene_model[Gene]):
+                        chunk_counter = str(chunk_num)
+                        print "BEFORE"
+                        print sorted(Gene_model[Gene], key=int)
+                        if (chunk_counter not in Gene_model[Gene]):
+                            Gene_model[Gene][chunk_counter] = dict()
+                            print chunk_counter
+                        else :
+                            assert False, "Merging Groups not properly merging!"
+
+                        for single_chunk in Gene_model[Gene][dupes[0]].values():
+                            c_identity = single_chunk[2] + "_" + single_chunk[0]
+                            Gene_model[Gene][chunk_counter][c_identity] = single_chunk
+
+                        for single_chunk in Gene_model[Gene][dupes[1]].values():
+                            c_identity = single_chunk[2] + "_" + single_chunk[0]
+                            Gene_model[Gene][chunk_counter][c_identity] = single_chunk
+
+                        print ("Chunk" + str(dupes[0]) + ": " + str(sorted(Gene_model[Gene][dupes[0]], key=str)))
+                        print ("Chunk" + str(dupes[1]) + ": " + str(sorted(Gene_model[Gene][dupes[1]], key=str)))
+                        del Gene_model[Gene][dupes[0]]
+                        del Gene_model[Gene][dupes[1]]
+                        print ("Merged chunks " + str(dupes[0]) + " and " + str(dupes[1]))
+                        print ("Chunk" + str(chunk_counter) + ": " + str(sorted(Gene_model[Gene][chunk_counter], key=str)))
+                        print "AFTER"
+                        print sorted(Gene_model[Gene], key=int)
+                        chunk_num = chunk_num + 1
+
+
+
+
+
+#                    for chunk, chunk2 in duplicates[dupes].values():
+#                        print chunk
+#                        print chunk2
+
+
+#                    if (delete in Gene_model[Gene]):
+#                        del Gene_model[Gene][delete]
+#                    break
 
 
 
@@ -300,12 +369,12 @@ def main(args):
             assertation_list = list(set(sorted(assertation_list)))
             for chunk_assert in assertation_list:
                 assert_counter = 0
-                print chunk_assert
+#                print chunk_assert
                 for Gene in Gene_model:
                     for Gene_model_chunk in Gene_model[Gene]:
                         if (chunk_assert in Gene_model[Gene][Gene_model_chunk]):
                             assert_counter = assert_counter + 1
-                            print assert_counter
+#                            print assert_counter
                             assert assert_counter == 1, (str(chunk_assert) + " is in more than one chunks")
 
 
