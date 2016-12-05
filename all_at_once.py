@@ -39,14 +39,14 @@ def main(args):
                 transcript_infos[str(local_alignment[0])][exon_counter] = list((local_alignment[8], local_alignment[9]))
                 exon_counter = 1 + exon_counter
 
-            elif (local_alignment[0] != local_alignment[1]):
+            elif (local_alignment[0] != local_alignment[1]): # Basically Else:
                 exon_counter = 1
 
         print ("Tranascript_infos: \n" + str(transcript_infos))
 
 
 
-    group_dictionary = dict() #
+    group_dictionary = dict() # This contains the number of genes, its corresponding transcripts, and transcript's corresponding sequence.
     groups = list()
     group_counter = 1
     hundred_percent_coordinates = dict() # To store all self_matching coordinates
@@ -134,7 +134,8 @@ def main(args):
                             print ('Adding ' + local_alignment[1] + ' into group(s)' + str(q_transc))
                             for num in q_transc :
                                 group_dictionary[num][local_alignment[1]] = dict()
-
+            else :
+                print "Not good enough match for grouping"
 
 
     if (len(group_dictionary) == 0):
@@ -143,7 +144,7 @@ def main(args):
         subprocess.call("rm gene_models/exon_coordinates.txt", shell=True)
 
 
-    elif (len(group_dictionary) >= 1):
+    elif (len(group_dictionary) >= 1): # Basically Else:
         print group_dictionary
         print groups
         print "\n \n \n \n Starting gene model construction \n \n \n \n"
@@ -151,12 +152,7 @@ def main(args):
 
         for transcripts in hundred_percent_coordinates:
             hundred_percent_coordinates[transcripts] = collections.OrderedDict(sorted(hundred_percent_coordinates[transcripts].items()))
-#        print hundred_percent_coordinates
         # Order the self_matching chunks
-
-
-
-
 
 
         #
@@ -164,33 +160,22 @@ def main(args):
         #
 
 
-
-
-
-
-
         # Save each transcript sequence in individual variables
         for group_num in group_dictionary:
             for record in SeqIO.parse(args.Genome_Walked_seq, "fasta"):
                 if (record.name in group_dictionary[group_num]):
                     group_dictionary[group_num][record.name] = record.seq
-#        print group_dictionary
-
-
-        # Name genes by group numbers
-        # Initialise gene model by first taking the biggest transcript
-
-
-
+#        group_dictionary now has group numbers, transcript_IDs that are within the groups, and its sequences
 
 
         Gene_model = dict() # This is like the insert_seq in the differentiate.py version for each gene_model
         for group_num in group_dictionary:
             Gene_model[group_num] = dict()
 
-        # Start building the gene models by finding out which overlapping chunks
+        # Start building the gene models by finding out which chunks overlap nad find out how many chunks each gene_model have
         assertation_list = list() # To save chunks to loop through and check if there are more than one occurrences
         chunk_num = 1
+
         with open("gene_models/tmp_blast.txt", 'r') as ins:
             for line in ins:
                 chunk_counter = str(chunk_num)
@@ -212,11 +197,6 @@ def main(args):
                             for self_alignment in hundred_percent_coordinates[subject]:
                                 if (int(hundred_percent_coordinates[subject][self_alignment][0]) <= int(local_alignment[8])) and (int(local_alignment[9]) <= int(hundred_percent_coordinates[subject][self_alignment][1])):
                                     s_matching_chunk = hundred_percent_coordinates[subject][self_alignment]
-#                            print local_alignment
-
-
-
-
 
                             s_identity = s_matching_chunk[2] + "_" + s_matching_chunk[0]
                             q_identity = q_matching_chunk[2] + "_" + q_matching_chunk[0]
@@ -229,17 +209,10 @@ def main(args):
                                 if (q_identity in Gene_model[groups][chunks]) and (s_identity not in Gene_model[groups][chunks]):
                                     Gene_model[groups][chunks][s_identity] = s_matching_chunk
                                     not_in_any = False
-#                                    print ("SUBJECT NOT IN " + s_identity)
-#                                    print (str(chunks) + ": " + str(Gene_model[groups][chunks]))
-#                                    print ("QUERY IN " + q_identity)
-                                    # grh_P   grh_H   100.000 1271    0       0       10338   11608   6264    7534    0.0     2344
 
                                 elif (q_identity not in Gene_model[groups][chunks]) and (s_identity in Gene_model[groups][chunks]):
                                     Gene_model[groups][chunks][q_identity] = q_matching_chunk
                                     not_in_any = False
-#                                    print ("QUERY NOT IN " + q_identity)
-#                                    print (str(chunks) + ": " + str(Gene_model[groups][chunks]))
-#                                    print ("SUBJECT IN " + s_identity)
 
                                 elif (q_identity in Gene_model[groups][chunks]) and (s_identity in Gene_model[groups][chunks]):
                                     not_in_any = False
@@ -827,6 +800,7 @@ def main(args):
                 inserting_separate_seq = list()
 
 
+            # Add additional info in Summary file with the transcripts that have not been grouped at the end of the file
             with open('gene_models/Summary_info_human.txt', 'a') as ins:
                 ins.write("-- Only variant transcripts -- \n")
                 for transcript in sorted(hundred_percent_coordinates, key=str):
@@ -840,14 +814,26 @@ def main(args):
                             ins.write(transcript + '\n\n\n\n\n')
                         else:
                             ins.write(transcript + ', ')
+                ins.close()
 
-
+            with open('gene_models/Summary_info_computer.txt', 'a') as ins:
+                ins.write("lonely_variants\t")
+                for transcript in sorted(hundred_percent_coordinates, key=str):
+                    grouped = False
+                    for Gene in group_dictionary:
+                        if (transcript in group_dictionary[Gene]):
+                            grouped = True
+                            break
+                    if (grouped == False):
+                        ins.write(transcript + '\t')
+                ins.close()
 
             # Remove all temporary files that are no longer needed
             subprocess.call("rm gene_models/exon_coordinates.txt", shell=True)
             subprocess.call("rm gene_models/tmp_mafft.fasta.txt", shell=True)
             if (args.blast == False):
                 subprocess.call("rm gene_models/tmp_blast.txt", shell=True)
+            print "\n\n\n -- Finish -- \n\n\n"
 
 
 
