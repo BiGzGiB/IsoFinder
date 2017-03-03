@@ -10,6 +10,11 @@ from collections import OrderedDict
 import collections
 
 
+# Things to fix and review
+# line 529-530 and 666-669 about making decisions on adding chunk when there are more than one possible insertional location
+# Update 8/2/17: I've added the arguement and tested it. It works! "Line 121 for how many intronic match it should have should also be a optional arguement"
+# Line 875. Am I missing one transcript on the list of transcripts that have not been grouped with any other transcripts?
+# Problem identified with Drosophila na transcript. It should group but it isn't grouping.
 def main(args):
 
     if not os.path.exists("./gene_models/"):
@@ -18,15 +23,18 @@ def main(args):
     subprocess.call("makeblastdb -dbtype nucl -in " + args.Genome_Walked_seq, shell=True) # Contradicting with test.py!!
         # Make blast database with the list of transcripts
     subprocess.call("blastn -query " + args.Genome_Walked_seq + " -db " + args.Genome_Walked_seq + " -outfmt 6 > gene_models/tmp_blast.txt", shell=True)
-  # Run sequence on blast to database made above, and redirect output into separate file
+  # Output is to use for grouping isoforms together.
 
     original_mRNA_transcripts = args.Original_seq
-    transcript_infos = dict() # This contains how many exons each transcripts contain and its coordinates
     exon_counter = 1
     # Blast between the genome walked transcript and original transcript?
 
     subprocess.call("blastn -query " + original_mRNA_transcripts + " -db " + args.Genome_Walked_seq + " -outfmt 6 > gene_models/exon_coordinates.txt", shell=True)
+    # For finding exon coordinates and calculating how many intronic sequences there are
 
+
+
+    transcript_infos = dict() # This contains how many exons each transcripts contain and its coordinates
     with open("gene_models/exon_coordinates.txt", 'r') as ins:
         # 1. Open the sequences.FASTA file and split each sequences to separate files
         # Exon numbers aren't neccessarily in the correct order.
@@ -49,7 +57,8 @@ def main(args):
     group_dictionary = dict() # This contains the number of genes, its corresponding transcripts, and transcript's corresponding sequence.
     groups = list()
     group_counter = 1
-    hundred_percent_coordinates = dict() # To store all self_matching coordinates
+    hundred_percent_coordinates = dict() # To store all self_matching/chunk coordinates
+    # Chunk = exonic sequence + intronic sequence
     with open("gene_models/tmp_blast.txt", 'r') as ins:
         for line in ins:
             local_alignment = line.rstrip().split("\t") # Open the result file and split the tabs and make each line a vector
@@ -58,16 +67,21 @@ def main(args):
                 if (local_alignment[0] not in hundred_percent_coordinates):
                     hundred_percent_coordinates[local_alignment[0]] = dict()
                 hundred_percent_coordinates[local_alignment[0]][int(local_alignment[6])] = (local_alignment[6], local_alignment[7], local_alignment[0])
+                # Saving chunk coordinates for each transcripts
+                # This information is used in the ordering of chunks on gene_model construction. Its not used in the process of grouping transcript isoforms
 
 
-
-            # Get the chunk coordinates for each transcripts
-            elif (local_alignment[0] != local_alignment[1]) and (float(local_alignment[2]) >= args.i) and (local_alignment[3] >= 50):
+            # Get the exon coordinates for each transcripts
+            elif (local_alignment[0] != local_alignment[1]) and (float(local_alignment[2]) >= args.p) and (local_alignment[3] >= 50):
+                # (local_alignment[3] >= 50??)
                 matching_exons = list()
 
                 # WHY IS THE local_alignment[0] NOT IN transcript_infos??? Because the original transcript file did not contain the transcript data, OR genome walked file did not contain the genome_walked data
+                # POSSIBLE ERROR!!!!
                 if (local_alignment[0] not in transcript_infos):
                     print (str(local_alignment[0]) + " is not in transcript_infos.")
+                    print ("Please be aware that your original sequence input file does not contain the mRNA sequence information of transcript " + str(local_alignment[0]))
+                    # Error message
                     continue
                 else :
                     tscript_exon_coord = transcript_infos[local_alignment[0]]
@@ -79,6 +93,7 @@ def main(args):
                         if (int(local_alignment[6]) > int(tscript_exon_coord[exons][0])) and (int(local_alignment[7]) < int(tscript_exon_coord[exons][1])):
                             continue
                             # Ignore this alignment because its shorter than the exon. Useless
+
                         elif (int(local_alignment[6]) <= int(tscript_exon_coord[exons][0])) and (int(local_alignment[7]) >= int(tscript_exon_coord[exons][1])):
                             # Matching exon and possibly some introns
                             #print (local_alignment[6] + "  " + local_alignment[7] + "\n" + transcript_infos[local_alignment[0]][exons][0] + "  " + transcript_infos[local_alignment[0]][exons][1])
@@ -87,6 +102,8 @@ def main(args):
                             print ("Exon" + str(exons) + " has " + str(intron_match) + " extra intronic matches")
                     if (len(matching_exons) == 0):
                         print "no matching exons"
+                        # No matching exons between Transcript A and B so read
+
                     elif (len(matching_exons) >= 1):
                         print ("Transcript " + local_alignment[1] + " matches " + str(matching_exons) + " of " + local_alignment[0] + "'s exon(s)")
                         q_transc = list()
@@ -106,7 +123,8 @@ def main(args):
                             # Group the two transcripts into a new group if either one are not already grouped
                             print ("Both transcripts are not within any group")
                                 # Do they have good intronic matches?
-                            if ((len(matching_exons) == 1) and (intron_match >= 30)) or (len(matching_exons) > 1):
+                            if ((len(matching_exons) == 1) and (intron_match >= args.i)) or (len(matching_exons) > 1):
+                                # Group the transcripts together if the transcript shares one exon with at least 30 intronic sequence match, or there is more than 1 exon matching.
                                 group_dictionary[group_counter] = dict()
                                 group_dictionary[group_counter][local_alignment[0]] = dict()
                                 group_dictionary[group_counter][local_alignment[1]] = dict()
@@ -134,6 +152,8 @@ def main(args):
                             print ('Adding ' + local_alignment[1] + ' into group(s)' + str(q_transc))
                             for num in q_transc :
                                 group_dictionary[num][local_alignment[1]] = dict()
+                        #else :
+                        #    assert False, "Both transcripts are grouped. Why are these two transcripts being analysed again?"
             else :
                 print "Not good enough match for grouping"
 
@@ -152,11 +172,11 @@ def main(args):
 
         for transcripts in hundred_percent_coordinates:
             hundred_percent_coordinates[transcripts] = collections.OrderedDict(sorted(hundred_percent_coordinates[transcripts].items()))
-        # Order the self_matching chunks
+        # Order the self_matching chunks. Chunks are separated by 500Ns
 
 
         #
-        # Each transcript have been grouped. Not time to stitch the information up to build a gene model for each group
+        # Each transcript have been grouped. Now time to stitch the information up to build a gene model for each group
         #
 
 
@@ -172,7 +192,7 @@ def main(args):
         for group_num in group_dictionary:
             Gene_model[group_num] = dict()
 
-        # Start building the gene models by finding out which chunks overlap nad find out how many chunks each gene_model have
+        # Start building the gene models by finding out which chunks overlap and find out how many chunks each gene_model have
         assertation_list = list() # To save chunks to loop through and check if there are more than one occurrences
         chunk_num = 1
 
@@ -190,7 +210,7 @@ def main(args):
                         # Both q and s in the same group. Now check through all chunks if it has already been added
 
                         # Check if the alignment is acceptable and save the coordinates if it is.
-                        if (query != subject) and (float(local_alignment[2]) >= args.i):
+                        if (query != subject) and (float(local_alignment[2]) >= args.p):
                             for self_alignment in hundred_percent_coordinates[query]:
                                 if (int(hundred_percent_coordinates[query][self_alignment][0]) <= int(local_alignment[6])) and (int(local_alignment[7]) <= int(hundred_percent_coordinates[query][self_alignment][1])):
                                     q_matching_chunk = hundred_percent_coordinates[query][self_alignment]
@@ -220,7 +240,7 @@ def main(args):
                                 elif (q_identity not in Gene_model[groups][chunks]) and (s_identity not in Gene_model[groups][chunks]):
                                     continue
 
-                            if (not_in_any == True):
+                            if (not_in_any == True): # Both q_identity and s_identity are not in any other chunk. Make a new chunk with these in it
                                 Gene_model[groups][chunk_counter] = dict()
                                 Gene_model[groups][chunk_counter][q_identity] = q_matching_chunk
                                 Gene_model[groups][chunk_counter][s_identity] = s_matching_chunk
@@ -230,7 +250,7 @@ def main(args):
                             continue
 
 
-            # Add the remaining chunks that are not found in other transcripts
+            # Add the remaining chunks of transcripts that are not shared between other transcripts within the same group/gene_model
             lonely_chunks = dict() # To save those chunks that are on its own, to find possible unique chunks
             for Gene in Gene_model:
                 lonely_chunks[Gene] = list()
@@ -254,6 +274,7 @@ def main(args):
             # REMOVING DUPLICATED CHUNKS
             duplicates = dict()
             print "Finding duplicate chunks"
+            print duplicates
             for Gene in Gene_model:
                 print ("Gene: " + str(Gene))
                 for chunks in sorted(Gene_model[Gene], key=int):
@@ -275,9 +296,6 @@ def main(args):
                         print ('deleted: ' + str(sorted(Gene_model[Gene][delete], key=str)))
                         del Gene_model[Gene][delete]
 
-
-
-
             duplicates = dict()
             print "Finding duplicate chunks"
             for Gene in Gene_model:
@@ -296,13 +314,11 @@ def main(args):
                                 break
             # MERGE DUPLICATED CHUNKS
 
-            print "Merging duplicated chunks"
+            print "-- Merging duplicated chunks --"
             print duplicates
             for Gene in Gene_model:
                 print ("Gene: " + str(Gene))
-
                 for dupes in duplicates.values():
-
                     if (dupes[0] in Gene_model[Gene]) and (dupes[1] in Gene_model[Gene]):
                         chunk_counter = str(chunk_num)
                         print "BEFORE"
@@ -331,21 +347,6 @@ def main(args):
                         print sorted(Gene_model[Gene], key=int)
                         chunk_num = chunk_num + 1
 
-
-
-
-
-#                    for chunk, chunk2 in duplicates[dupes].values():
-#                        print chunk
-#                        print chunk2
-
-
-#                    if (delete in Gene_model[Gene]):
-#                        del Gene_model[Gene][delete]
-#                    break
-
-
-
             # ASSERTATION: To see if there are more than one chunk that contains the same exon(?)
             assertation_list = list(set(sorted(assertation_list)))
             for chunk_assert in assertation_list:
@@ -361,6 +362,7 @@ def main(args):
 
 
             # Start sorting them in order
+            print "-- Start sorting them in order -- \n"
             Order = dict()
             for Gene in Gene_model:
                 Order[Gene] = dict()
@@ -377,7 +379,10 @@ def main(args):
                                 elif (len(Order[Gene][transcript]) != 0) and (chunks not in Order[Gene][transcript]):
                                     Order[Gene][transcript].append(chunks)
 
-#                break # To Only run GRAINYHEAD
+                                else: # Continue. This particular chunk is already added into the transcript's order
+                                    continue
+                            else: # This is normal. Obviously, q_identity might not be in chunks
+                                continue
 
 
             # List for the ambiguous chunks that should be added AFTER the most left and right ends
@@ -385,15 +390,12 @@ def main(args):
             # 1. That chunk is only found in one transcript, AND that chunks on its either side are ALL lonely chunks
             # 2. The chunk is positionally on end of the gene model, BUT it was added within the gene model, not at the end, because of the other relative chunk position
             ambiguous = dict() # appending will be done from other_uniq and left right chunks that went in between gene_model
-
-
             for Gene in Gene_model:
                 Order[Gene]["relative_order"] = dict()
                 Order[Gene]["left_uniq"] = list()
                 Order[Gene]["right_uniq"] = list()
                 Order[Gene]["other_uniq"] = list()
                 ambiguous[Gene] = list()
-
 
                 # To make the relative order of each chunk information
                 for chunks in Gene_model[Gene]:
@@ -438,9 +440,7 @@ def main(args):
                         del lonely_chunks[Gene][lonely_right_idx]
 
                 # Save those chunks where it appears only in one transcripts and has no relative position on one side, but is still ambiguous
-                print lonely_chunks
-                print Order[Gene]['left_uniq']
-                print "HELLO"
+
                 for chunks in Order[Gene]['left_uniq']:
                     if (chunks in lonely_chunks[Gene]):
                         if (chunks not in ambiguous[Gene]):
@@ -471,19 +471,15 @@ def main(args):
                             assert False, "Why is this transcript even added into this group??"
 
 
-
-
-
-
-
-
-
-
                 # Start sorting the chunks in order
+                print "\n -- Final Ordering for each Gene_Model -- \n"
+                print "\n  - Ordering Inner Gene Model Order - \n"
                 for chunks in sorted(Order[Gene]["relative_order"], key=int):
                     if ("final_order" not in Order[Gene]):
                         Order[Gene]['final_order'] = list()
+
                     if (chunks not in Order[Gene]['left_uniq']) and (chunks not in Order[Gene]['right_uniq']) and (chunks not in Order[Gene]['other_uniq']):
+                        # Ordering non-ambiguous inner chunks first
                         if (len(Order[Gene]['final_order']) == 0):
                             Order[Gene]['final_order'].append(chunks)
                         elif (len(Order[Gene]['final_order']) == 1):
@@ -515,7 +511,8 @@ def main(args):
                             print right_counter
 
                             # DOUBLE CHECK
-                            print ("Chunks: " + str(chunks))
+                            print ("Chunk: " + str(chunks))
+                            print Order[Gene]['relative_order'][chunks]
                             if (left_counter==right_counter):
                                 Order[Gene]['final_order'].insert(left_counter, chunks)
                                 print Order[Gene]['final_order']
@@ -528,11 +525,17 @@ def main(args):
 #                            elif (left_counter == 0) and (right_counter > 1):
 
                             else:
-                                assert False, "Unknown where to insert chunk"
+                                print "UNKNOWN WHERE TO INSERT CHUNK"
+                                print Order[Gene]['relative_order'][chunks]
 
+                                # There's more than one possible position this chunk can be added in.
+                                # Make a decision!!!
+
+#                                assert False, "Unknown where to insert chunk"
+                print "\n  - Ordering Left and Right Most Chunks - \n"
                 print Order[Gene]['final_order']
                 print "LONELY CHUNKS"
-                print lonely_chunks
+                print lonely_chunks[Gene]
                 print "OTHER UNIQUES"
                 print Order[Gene]["other_uniq"]
 
@@ -575,6 +578,7 @@ def main(args):
 
                 print ("Order of chunks in Gene_model" + str(Gene) + ': '+ str(Order[Gene]['final_order']))
 
+                print "\n  - Ordering Remaining Ambiguous Chunks - \n"
                 # Now add the other uniques in relation to the left and right most chunks
                 for unique_chunks in Order[Gene]["other_uniq"]:
 
@@ -610,7 +614,67 @@ def main(args):
 
                 print Order[Gene]['final_order']
 
-#                break # To Only run GRAINYHEAD
+
+
+
+
+                # Identify chunks that have not yet been added because of its ambiguous position
+                missing_chunks = list()
+                for chunk in Gene_model[Gene]:
+                    if (chunk not in Order[Gene]['final_order']):
+                        missing_chunks.append(chunk)
+
+
+
+
+
+                # Duplicated and modified version of Inner Chunk Ordering
+                for chunks in missing_chunks:
+                    left_counter = 0 # Index to be inserted from left of list
+                    right_counter = 0 # Index to be inserted from right of list
+                    left_chunk = Order[Gene]["relative_order"][chunks]['left']
+                    right_chunk = Order[Gene]["relative_order"][chunks]['right']
+
+                    for chunks_final in Order[Gene]['final_order']:
+                        for left_chunks in left_chunk:
+                            if (chunks_final in left_chunk):
+                                if (left_counter < (Order[Gene]['final_order'].index(chunks_final)+1)):
+                                    left_counter = int(Order[Gene]['final_order'].index(chunks_final)) + 1
+                        for right_chunks in right_chunk:
+                            if (chunks_final in right_chunk):
+                                if (right_counter == 0):
+                                    right_counter = int(Order[Gene]['final_order'].index(chunks_final))
+                                elif (right_counter > Order[Gene]['final_order'].index(chunks_final)):
+                                    right_counter = int(Order[Gene]['final_order'].index(chunks_final))
+                                    print ("Right:" + str(right_counter))
+                    print left_counter
+                    print right_counter
+
+                    # DOUBLE CHECK
+                    print ("Chunk: " + str(chunks))
+                    print Order[Gene]['relative_order'][chunks]
+                    if (left_counter==right_counter):
+                        Order[Gene]['final_order'].insert(left_counter, chunks)
+                        print Order[Gene]['final_order']
+                    elif (left_counter == 0) and (right_counter == 1):
+                        Order[Gene]['final_order'].insert(left_counter, chunks)
+                        print Order[Gene]['final_order']
+                    elif (left_counter == len(Order[Gene]['final_order'])) and (right_counter == 0):
+                        Order[Gene]['final_order'].insert(left_counter, chunks)
+                        print Order[Gene]['final_order']
+#                            elif (left_counter == 0) and (right_counter > 1):
+
+                    else:
+                        print "UNKNOWN WHERE TO INSERT CHUNK"
+                        print Order[Gene]['relative_order'][chunks]
+#                                assert False, "Unknown where to insert chunk"
+                        #
+
+
+                if (len(missing_chunks) >= 1):
+                    print missing_chunks
+                    print Order[Gene]['final_order']
+                    assert False, (chunk + " is not in the final order")
 
 
 
@@ -648,7 +712,6 @@ def main(args):
                 #    if (Order[Gene]['final_order'].index(next_chunk_id) < Order[Gene]['final_order'].index(last_id)):
                 #        next_chunk_id = Order[Gene]['final_order'][next_chunk_idx] # STR
 
-
                 #    elif (Order[Gene]['final_order'].index(next_chunk_id)== last_idx):
                 #        print "Next chunk is the last chunk"
 
@@ -676,7 +739,7 @@ def main(args):
                                 if ((Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["left_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["right_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]['other_uniq'])) and (0 < next_chunk_idx) and (next_chunk_idx < last_idx):
                                     inserting_seq.append("U"*500)
                                     print "Us ADDED"
-
+                                # Why is there an else?
                                 else:
                                     inserting_seq.append("N"*500)
                                     print "Ns ADDED"
@@ -715,7 +778,7 @@ def main(args):
                             if ((Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["left_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["right_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]['other_uniq'])) and (0 < next_chunk_idx) and (next_chunk_idx < last_idx):
                                 inserting_seq.append("U"*500)
                                 print "Us ADDED"
-
+                            # Why is there an else?
                             else:
                                 inserting_seq.append("N"*500)
                                 print "Ns ADDED"
@@ -783,7 +846,7 @@ def main(args):
                     with open('gene_models/gene_model' + str(Gene) + '_folder/final_all_seq.fasta.txt', 'w') as ins:
                         ins.write("")
                         for idx in range(0, len(inserting_separate_seq)):
-                            ins.write(">chunk" + str(Order[Gene]['final_order'][idx]) + "\n")
+                            ins.write(">chunk" + str(Order[Gene]['final_order'][idx]) + "_" + str(Gene) + "\n")
                             ins.write(inserting_separate_seq[idx] + "\n \n")
                         ins.close()
 
@@ -810,6 +873,7 @@ def main(args):
                             grouped = True
                             break
                     if (grouped == False):
+                        # Does this mean one transcript is missing from the list??
                         if (sorted(hundred_percent_coordinates, key=str).index(transcript) + 1 == len(hundred_percent_coordinates)):
                             ins.write(transcript + '\n\n\n\n\n')
                         else:
@@ -840,9 +904,10 @@ def main(args):
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('Genome_Walked_seq', metavar = 'filename.FASTA', help='Genome Walked sequence file')
 parser.add_argument('Original_seq', metavar = 'filename.FASTA', help='Original sequence file before running Genome Walker')
-parser.add_argument('-i', nargs='?', metavar='FLOAT', default=95.000, type=float, help='Minimum percentage identity for the grouping to occur based on the BLAST result (default: %(default)s)')
+parser.add_argument('-p', nargs='?', metavar='FLOAT', default=95.000, type=float, help='Minimum percentage identity for the grouping to occur based on the BLAST result (default: %(default)s)')
+parser.add_argument('-i', nargs='?', metavar='INT', default=30, type=int, help='Minimum number of intronic sequence match for transcripts to be grouped together if transcripts only have one matching exon (default: %(default)s)')
 parser.add_argument('-s','--separate', action='store_true', help='Creates a new folder that contains information about individual gene models (default: %(default)s)')
 parser.add_argument('-b','--blast', action='store_true', help='Does not delete the BLAST output (default: %(default)s)')
 args = parser.parse_args()
-
+# Line 121 for how many intronic match it should have should also be a optional arguement
 main(args)
