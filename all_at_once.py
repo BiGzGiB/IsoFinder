@@ -274,7 +274,6 @@ def main(args):
             # REMOVING DUPLICATED CHUNKS
             duplicates = dict()
             print "Finding duplicate chunks"
-            print duplicates
             for Gene in Gene_model:
                 print ("Gene: " + str(Gene))
                 for chunks in sorted(Gene_model[Gene], key=int):
@@ -387,7 +386,7 @@ def main(args):
 
             # List for the ambiguous chunks that should be added AFTER the most left and right ends
             # Two conditions of unique chunks
-            # 1. That chunk is only found in one transcript, AND that chunks on its either side are ALL lonely chunks
+            # 1. That chunk is only found in one transcript, AND that chunks on its either left or right side are ALL lonely chunks
             # 2. The chunk is positionally on end of the gene model, BUT it was added within the gene model, not at the end, because of the other relative chunk position
             ambiguous = dict() # appending will be done from other_uniq and left right chunks that went in between gene_model
             for Gene in Gene_model:
@@ -471,8 +470,58 @@ def main(args):
                             assert False, "Why is this transcript even added into this group??"
 
 
+                # Check between every shared chunks to see what chunks are between shared chunks
+                in_between = dict()
+                for Gene in Gene_model:
+                    for chunk in Gene_model[Gene]:
+                        if chunk not in lonely_chunks[Gene]:
+
+                            for transcript in Order[Gene]:
+                                if (transcript != "relative_order") and (transcript != "right_uniq") and (transcript != "left_uniq") and (transcript != "other_uniq"):
+                                    for chunk2 in Gene_model[Gene]:
+
+                                        if (chunk in Order[Gene][transcript]) and (chunk2 in Order[Gene][transcript]):
+                                            if (chunk2 not in lonely_chunks[Gene]) and (chunk != chunk2) and (Order[Gene][transcript].index(chunk) < Order[Gene][transcript].index(chunk2) and ((Order[Gene][transcript].index(chunk2) - Order[Gene][transcript].index(chunk)) != 1)):
+                                                index = Order[Gene][transcript].index(chunk) + 1
+                                                between_closest_lonely_chunk = True
+                                                chunks_in_between = list()
+                                                while (index < Order[Gene][transcript].index(chunk2)):
+                                                    if (Order[Gene][transcript][index] not in lonely_chunks[Gene]):
+                                                        between_closest_lonely_chunk = False
+                                                        chunks_in_between = list()
+                                                        break
+                                                    chunks_in_between.append(Order[Gene][transcript][index])
+                                                    index = index + 1
+                                                if (between_closest_lonely_chunk == False):
+                                                    break
+                                                print (transcript + " " + str(chunk) + " < " + str(chunk2))
+                                                print ("Index of chunk" + str(chunk) + ": " + str(Order[Gene][transcript].index(chunk)))
+                                                print ("Index of chunk" + str(chunk2) + ": " + str(Order[Gene][transcript].index(chunk2)))
+                                                print (chunks_in_between)
+                                                if (Gene not in in_between):
+                                                    in_between[Gene] = dict()
+                                                in_between[Gene][transcript] = dict()
+                                                in_between[Gene][transcript][str(chunk) + "<" + str(chunk2)] = chunks_in_between
+                    print "in_between"
+                    print in_between
+                    print ambiguous[Gene]
+                    for transcript in in_between[Gene]:
+                        for between_chunk in in_between[Gene][transcript]:
+                            for transcript2 in in_between[Gene]:
+                                for between_chunk2 in in_between[Gene][transcript2]:
+                                    if (transcript != transcript2) and (between_chunk == between_chunk2):
+                                        for chunk in in_between[Gene][transcript][between_chunk]:
+                                            if (chunk not in ambiguous[Gene]):
+                                                ambiguous[Gene].append(chunk)
+                                        for chunk in in_between[Gene][transcript2][between_chunk2]:
+                                            if (chunk not in ambiguous[Gene]):
+                                                ambiguous[Gene].append(chunk)
+                                        print (transcript + " " + between_chunk + " and " + transcript2 + " " + between_chunk2)
+                    print ambiguous[Gene]
+
+
                 # Start sorting the chunks in order
-                print "\n -- Final Ordering for each Gene_Model -- \n"
+                print "\n -- Final Ordering for each Gene_Model " + str(Gene) + " -- \n"
                 print "\n  - Ordering Inner Gene Model Order - \n"
                 for chunks in sorted(Order[Gene]["relative_order"], key=int):
                     if ("final_order" not in Order[Gene]):
@@ -526,42 +575,45 @@ def main(args):
 
                             else:
                                 print "UNKNOWN WHERE TO INSERT CHUNK"
-                                print Order[Gene]['relative_order'][chunks]
-
+#                                print Order[Gene]['relative_order'][chunks]
+#                                print ("left counter :" + str(left_counter))
+#                                print ("right counter :" + str(right_counter))
+#                                print Order[Gene]['relative_order'][chunks][int(left_counter):int(right_counter)]
                                 # There's more than one possible position this chunk can be added in.
                                 # Make a decision!!!
 
 #                                assert False, "Unknown where to insert chunk"
-                print "\n  - Ordering Left and Right Most Chunks - \n"
                 print Order[Gene]['final_order']
-                print "LONELY CHUNKS"
-                print lonely_chunks[Gene]
-                print "OTHER UNIQUES"
-                print Order[Gene]["other_uniq"]
+
+                print "\n  - Ordering Left and Right Most Chunks - \n"
+                print ("LONELY CHUNKS: " + str(lonely_chunks[Gene]))
+                print ("OTHER UNIQUES: " + str(Order[Gene]["other_uniq"]))
+
 
 
                 # Now add the left and right most chunks
                 for chunks in sorted(Order[Gene]["relative_order"], key=int):
-                    left_chunks = Order[Gene]["relative_order"][chunks]['left']
-                    right_chunks = Order[Gene]["relative_order"][chunks]['right']
-
                     # Adding left most chunk and uniques
                     if (chunks in Order[Gene]['left_uniq']):
+                        right_chunks = Order[Gene]["relative_order"][chunks]['right']
                         insert_index = len(Order[Gene]['final_order'])
                         for right_chunk in Order[Gene]['final_order']:
 
                             if (right_chunk in right_chunks):
                                 if (insert_index > int(Order[Gene]['final_order'].index(right_chunk))):
                                     insert_index = int(Order[Gene]['final_order'].index(right_chunk))
-                        Order[Gene]['final_order'].insert(insert_index, chunks)
                         if (insert_index != 0):
                             print "AMBIGUOUS ADDED"
                             print chunks
                             if (chunks not in ambiguous[Gene]):
                                 ambiguous[Gene].append(chunks)
+                        Order[Gene]['final_order'].insert(insert_index, chunks)
+                        print "Added left most chunk"
+                        print Order[Gene]['final_order']
 
                     # Adding right most chunk and uniques
                     elif (chunks in Order[Gene]['right_uniq']):
+                        left_chunks = Order[Gene]["relative_order"][chunks]['left']
                         insert_index = 0
                         for left_chunk in Order[Gene]['final_order']:
 
@@ -574,7 +626,10 @@ def main(args):
                             if (chunks not in ambiguous[Gene]):
                                 ambiguous[Gene].append(chunks)
                         Order[Gene]['final_order'].insert(insert_index, chunks)
+                        print "Added right most chunk"
                         print Order[Gene]['final_order']
+
+
 
                 print ("Order of chunks in Gene_model" + str(Gene) + ': '+ str(Order[Gene]['final_order']))
 
@@ -638,7 +693,7 @@ def main(args):
                     for chunks_final in Order[Gene]['final_order']:
                         for left_chunks in left_chunk:
                             if (chunks_final in left_chunk):
-                                if (left_counter < (Order[Gene]['final_order'].index(chunks_final)+1)):
+                                if (left_counter < (Order[Gene]['final_order'].index(chunks_final) + 1)):
                                     left_counter = int(Order[Gene]['final_order'].index(chunks_final)) + 1
                         for right_chunks in right_chunk:
                             if (chunks_final in right_chunk):
@@ -650,7 +705,6 @@ def main(args):
                     print left_counter
                     print right_counter
 
-                    # DOUBLE CHECK
                     print ("Chunk: " + str(chunks))
                     print Order[Gene]['relative_order'][chunks]
                     if (left_counter==right_counter):
@@ -665,16 +719,23 @@ def main(args):
 #                            elif (left_counter == 0) and (right_counter > 1):
 
                     else:
-                        print "UNKNOWN WHERE TO INSERT CHUNK"
-                        print Order[Gene]['relative_order'][chunks]
+                        print "Multiple insertion points!"
+                        print ("left counter : " + str(left_counter))
+                        print ("right counter : " + str(right_counter))
+                        print "Inserting at the 3' most possible point"
+                        Order[Gene]['final_order'].insert(left_counter, chunks)
+                        print ("Final order : " + str(Order[Gene]['final_order']))
+
+#                        print Order[Gene]['relative_order'][chunks][int(left_counter):int(right_counter)]
 #                                assert False, "Unknown where to insert chunk"
-                        #
+
 
 
                 if (len(missing_chunks) >= 1):
                     print missing_chunks
                     print Order[Gene]['final_order']
-                    assert False, (chunk + " is not in the final order")
+#                    assert False, (chunk + " is not in the final order")
+#                   Fix this problem!!!
 
 
 
@@ -684,13 +745,13 @@ def main(args):
 
             # Start saving the ordered sequence information into text file
             if os.path.exists("./gene_models/gene_models.fasta.txt"):
-                subprocess.call("rm gene_models/gene_models.fasta.txt", shell=True) # Remove because I need to append.
+                subprocess.call("rm gene_models/gene_models.fasta.txt", shell=True)
 
             if os.path.exists("gene_models/Summary_info_human.txt"):
-                subprocess.call("rm gene_models/Summary_info_human.txt", shell=True) # Remove because I need to append.
+                subprocess.call("rm gene_models/Summary_info_human.txt", shell=True)
 
             if os.path.exists("gene_models/Summary_info_computer.txt"):
-                subprocess.call("rm gene_models/Summary_info_computer.txt", shell=True) # Remove because I need to append.
+                subprocess.call("rm gene_models/Summary_info_computer.txt", shell=True)
 
             inserting_seq = list() # For Gene Model
             inserting_separate_seq = list() # For Sequences for separate chunks
@@ -724,21 +785,20 @@ def main(args):
                             inserting_separate_seq.append(str(str(group_dictionary[Gene][t_id[2]])[int(t_id[0])-1:int(t_id[1])]))
                             print ("Length of chunk" + str(ordered_chunks) + ": " + str(len(str(str(group_dictionary[Gene][t_id[2]])[int(t_id[0])-1:int(t_id[1])]))))
 
-
-                            # If CURRENT chunk is the last chunk in the order, don't add any Ns or Us
+                            # If CURRENT chunk is the last chunk in the order, don't add any Ns or Zs
                             if (ordered_chunks == last_id):
                                 print "LAST CHUNK"
 
-                            # If CURRENT chunk is a unique chunk, add 500 Us
-                            elif ((ordered_chunks in Order[Gene]["left_uniq"]) or (ordered_chunks in Order[Gene]["right_uniq"]) or (ordered_chunks in Order[Gene]['other_uniq'])) and (0 < current_chunk_idx) and (current_chunk_idx < last_idx):
-                                inserting_seq.append("U"*500)
-                                print "Us ADDED"
+                            # If CURRENT chunk is a unique chunk, add 500 Zs
+                            elif ((ordered_chunks in ambiguous[Gene]) or (ordered_chunks in Order[Gene]["left_uniq"]) or (ordered_chunks in Order[Gene]["right_uniq"]) or (ordered_chunks in Order[Gene]['other_uniq'])) and (0 < current_chunk_idx) and (current_chunk_idx < last_idx):
+                                inserting_seq.append("Z"*500)
+                                print "Zs ADDED"
 
-                            # Elif NEXT chunk is a unique chunk, add 500 Us
+                            # Elif NEXT chunk is a unique chunk, add 500 Zs
                             elif (next_chunk_idx < len(Order[Gene]['final_order'])):
-                                if ((Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["left_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["right_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]['other_uniq'])) and (0 < next_chunk_idx) and (next_chunk_idx < last_idx):
-                                    inserting_seq.append("U"*500)
-                                    print "Us ADDED"
+                                if ((Order[Gene]['final_order'][next_chunk_idx] in ambiguous[Gene]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["left_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["right_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]['other_uniq'])) and (0 < next_chunk_idx) and (next_chunk_idx < last_idx):
+                                    inserting_seq.append("Z"*500)
+                                    print "Zs ADDED"
                                 # Why is there an else?
                                 else:
                                     inserting_seq.append("N"*500)
@@ -766,18 +826,18 @@ def main(args):
                         inserting_separate_seq.append(str(consensus).upper())
                         print ("Length of chunk" + str(ordered_chunks) + ": " + str(len(str(consensus).upper())))
 
-                        # If CURRENT chunk is the last chunk in the order, don't add any Ns or Us
+                        # If CURRENT chunk is the last chunk in the order, don't add any Ns or Zs
                         if (ordered_chunks == last_id):
                             print "LAST CHUNK"
 
-                        elif ((ordered_chunks in Order[Gene]["left_uniq"]) or (ordered_chunks in Order[Gene]["right_uniq"]) or (ordered_chunks in Order[Gene]['other_uniq'])) and ((Order[Gene]['final_order'].index(ordered_chunks) != 0) and (Order[Gene]['final_order'].index(ordered_chunks) != len(Order[Gene]['final_order'])-1)):
-                            inserting_seq.append("U"*500)
-                            print "Us ADDED"
-                        # If NEXT chunk is a unique chunk, add 500 Us
+                        elif ((ordered_chunks in ambiguous[Gene]) or (ordered_chunks in Order[Gene]["left_uniq"]) or (ordered_chunks in Order[Gene]["right_uniq"]) or (ordered_chunks in Order[Gene]['other_uniq'])) and ((Order[Gene]['final_order'].index(ordered_chunks) != 0) and (Order[Gene]['final_order'].index(ordered_chunks) != len(Order[Gene]['final_order'])-1)):
+                            inserting_seq.append("Z"*500)
+                            print "Zs ADDED"
+                        # If NEXT chunk is a unique chunk, add 500 Zs
                         elif (next_chunk_idx < len(Order[Gene]['final_order'])):
-                            if ((Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["left_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["right_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]['other_uniq'])) and (0 < next_chunk_idx) and (next_chunk_idx < last_idx):
-                                inserting_seq.append("U"*500)
-                                print "Us ADDED"
+                            if ((Order[Gene]['final_order'][next_chunk_idx] in ambiguous[Gene]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["left_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]["right_uniq"]) or (Order[Gene]['final_order'][next_chunk_idx] in Order[Gene]['other_uniq'])) and (0 < next_chunk_idx) and (next_chunk_idx < last_idx):
+                                inserting_seq.append("Z"*500)
+                                print "Zs ADDED"
                             # Why is there an else?
                             else:
                                 inserting_seq.append("N"*500)
@@ -911,3 +971,5 @@ parser.add_argument('-b','--blast', action='store_true', help='Does not delete t
 args = parser.parse_args()
 # Line 121 for how many intronic match it should have should also be a optional arguement
 main(args)
+
+# 26/3/2017 : Changed the ambiguous sequence gaps into 500 Zs from 500 Us

@@ -11,6 +11,6 @@ def main(args):
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('reference_seq', metavar = 'filename.FASTA', help='Reference sequence file to be mapped onto')
-parser.add_argument('map_seq', metavar = 'filename.FASTA', help='Sequence file to be mapped on')
+parser.add_argument('map_seq', metavar = 'filename.FASTA', help='Sequence file to map on')
 args = parser.parse_args()
 main(args)
