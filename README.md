@@ -47,8 +47,8 @@ Second positional argument is the mRNA sequence/transcriptome file that was inpu
 
 
 Example:
-'''
 \# After moving to the play_data1 directory
+'''
 python isofinder.py 1iter_Final_sequences.fasta transcriptome1.txt
 '''
 
