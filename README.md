@@ -19,7 +19,6 @@ Download source from github at:
 
 
 ## Usage
-Currently three scripts exists in the repository but please ignore the “differentiate.py” and “mapping.py”. “all_at_once.py” is the script for IsoFinder.
 
 ```
 $python all_at_once.py -help
@@ -45,3 +44,11 @@ optional arguments:
 First positional argument is the output file of VGW named “Final_sequences.fasta”.
 
 Second positional argument is the mRNA sequence/transcriptome file that was inputted into VGW to process and create the “Final_sequences.fasta” file.
+
+
+Example:
+'''
+# After moving to the play_data1 directory
+python isofinder.py 1iter_Final_sequences.fasta transcriptome1.txt
+'''
+
