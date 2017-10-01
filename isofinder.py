@@ -34,6 +34,7 @@ def Obtain_exon_indices(BLAST_file):
     return exon_indices
 
 def Add_to_group(group_dictionary, transcript_0, transcript_1, group_counter):
+    # This function is inside the Cluster_transcripts function. It is to group the two transcripts together that has been predicted to be transcribed from the same gene.
     q_transc = list()
     s_transc = list()
 
@@ -49,9 +50,8 @@ def Add_to_group(group_dictionary, transcript_0, transcript_1, group_counter):
 
     if (len(q_transc) == 0) and (len(s_transc) == 0):
         # Group the two transcripts into a new group if either one are not already grouped
-        print ("Both transcripts are not within any group")
+        #print ("Both transcripts are not within any group")
 
-            # Group the transcripts together if the transcript shares one exon with at least the user-defined (Default=30) number of intronic sequence match, or there is more than 1 exon matching.
         group_dictionary[group_counter] = dict()
         group_dictionary[group_counter][transcript_0] = dict()
         group_dictionary[group_counter][transcript_1] = dict()
@@ -96,8 +96,9 @@ def Add_to_group(group_dictionary, transcript_0, transcript_1, group_counter):
 
     return group_dictionary, group_counter
 
-def Cluster_transcripts(exon_indices, BLAST_file, min_perc_identity=95.000, min_intron_match=30):
-    # Cluster transcripts which are predicted to be transcribed from the same gene.
+def Group_transcripts(exon_indices, BLAST_file, min_perc_identity=95.000, min_intron_match=30):
+    # Function to measure whether the two transcripts should be grouped together.
+    # Transcripts which are grouped together are transcripts predicted to be transcribed from the same gene.
 
     group_dictionary = dict() # This contains the number of genes, its corresponding transcripts, and transcript's corresponding sequence.
     group_counter = 1
@@ -153,13 +154,12 @@ def Cluster_transcripts(exon_indices, BLAST_file, min_perc_identity=95.000, min_
                         pass
 
                 # Do they have good intronic matches?
+                # Group the transcripts together if the transcript shares one exon with at least the user-defined (Default=30) number of intronic sequence match, or there is more than 1 exon matching.
                 if (len(matching_exons) == 0):
                     print "no matching exons"
                     # No matching exons between Transcript A and B
 
                 elif (len(matching_exons) == 1) and (intron_match >= min_intron_match):
-                    # Is this condition ever met?? Because intron_match is a variable not accessible by this loop.
-                    # This is to check if it works correctly
                     logging.info("Condition (len(matching_exons) == 1) and (intron_match >= min_intron_match) met between %s and %s" % (local_alignment[0], local_alignment[1]))
                     logging.info("intron_match: %d" % (intron_match))
                     group_dictionary, group_counter = Add_to_group(group_dictionary, local_alignment[0], local_alignment[1], group_counter)
@@ -221,7 +221,8 @@ def Obtain_contig_indices(BLAST_file):
     return hundred_percent_coordinates
 
 def Save_transcript_sequences(GW_fasta, group_dictionary):
-    # Save only those transcript sequences which have been clustered. This information will be used to create the gene model.
+    # Store transcript sequences to a dictionary.
+    # Store only those transcript sequences which have been grouped. This information will be used to create the gene model later.
     for group_num in group_dictionary:
         try:
             records = SeqIO.parse(GW_fasta, "fasta")
@@ -363,6 +364,7 @@ def Add_remaining_contigs(contig_counter, Gene_model, hundred_percent_coordinate
     return Gene_model
 
 def Check_duplication(Gene_model):
+    # To check if a contig is found more than once.
     tmp_list = list([contig2 for group in Gene_model for contig in Gene_model[group] for contig2 in Gene_model[group][contig]])
     duplicate_dict = collections.Counter(tmp_list)
     for contig in duplicate_dict:
@@ -370,13 +372,15 @@ def Check_duplication(Gene_model):
             logging.debug("Contig %s is part of %d contigs" % (contig, duplicate_dict[contig]))
 
 def _check_correct_grouping(group_dictionary):
+    # Not in use of main(). Ignore.
     for group in group_dictionary:
         print group
         for transcript in group_dictionary[group]:
             print transcript
 
 def Save_transcript_contig_order(group_dictionary, Gene_model, hundred_percent_coordinates):
-    # Each contig within transcripts are ordered 3' to 5'. This function is to find that order
+    # The contig order for each transcripts are stored in a dictionary.
+    # This information is later used to order the contigs to create the gene_model.
     Order = dict()
     for group in group_dictionary:
         Order[group] = dict()
@@ -413,7 +417,7 @@ def Save_transcript_contig_order(group_dictionary, Gene_model, hundred_percent_c
     return Order
 
 def Contig_relatives(Gene_model, Order):
-    # Gain the position of contigs relative to all other contigs
+    # Stores the information about a position of a contig relative to all other contigs.
     relative_order = dict()
     for group in Gene_model:
         relative_order[group] = dict()
@@ -439,7 +443,7 @@ def Contig_relatives(Gene_model, Order):
     return relative_order
 
 def Finalise_Gene_Model(Order, relative_order):
-
+    # Constructs the Gene_model for each group.
     Final_order = dict()
 
     for group in Order:
@@ -477,7 +481,7 @@ def Finalise_Gene_Model(Order, relative_order):
                                 s_R = right_element_idx
 
                         if s_L > s_R:
-                            print s_L, s_R
+                            #print s_L, s_R
                             assert False, "s_L > s_R"
 
                         #print relative_order[1][element]["left"]
@@ -565,6 +569,8 @@ def Group_into_clusters(Final_order, Order):
     return contig_clusters
 
 def Detect_ambiguous_contigs(Final_order, relative_order, contig_clusters):
+    # Checks which contigs are ambiguously positioned.
+    # These contigs are flagged as ambiguous so that the user is notified that there are >1 possible positions for these contigs with the current information given.
     ambiguous_contigs = dict()
 
     for group in Final_order:
@@ -625,6 +631,10 @@ def Detect_ambiguous_contigs(Final_order, relative_order, contig_clusters):
     return ambiguous_contigs
 
 def Generate_sequences(Final_order, Gene_model, group_dictionary, ambiguous_contigs):
+    # Contig sequences saved with appropriate sequences gaps to create output gene_model FASTA file.
+    # Sequences gaps are represented by either 500 "Z" or "N" sequences.
+    # Contigs with Z sequences on either side (5' and 3') are indicative that this contig is ambiguously placed.
+
     sequences = dict()
     for group in Final_order:
         sequences[group] = list()
@@ -649,7 +659,10 @@ def Generate_sequences(Final_order, Gene_model, group_dictionary, ambiguous_cont
     return sequences
 
 def Added_contig(Gene_model, group_dictionary, current_contig, group, sequences):
-    print len(Gene_model[group][current_contig])
+    # This function is nested inside the Generate_sequences function.
+    # Contigs which match between different transcripts are merged and the consensus sequence is obtained in this function.
+
+    # If the current contig is found in more than 1 transcripts, gain the consensus then add the consensus sequence.
     if len(Gene_model[group][current_contig]) > 1:
         # MAFFT
         for indv_contig in Gene_model[group][current_contig]:
@@ -669,6 +682,7 @@ def Added_contig(Gene_model, group_dictionary, current_contig, group, sequences)
             ins.close()
             # To reset the file for the next round of MAFFT
 
+    # If the current contig is found in only one transcript.
     elif len(Gene_model[group][current_contig]) == 1:
         # Just Add
         for indv_contig in Gene_model[group][current_contig]:
@@ -680,7 +694,10 @@ def Added_contig(Gene_model, group_dictionary, current_contig, group, sequences)
     return sequences
 
 def Write_to_files(sequences, group_dictionary, Final_order, ambiguous_contigs, hundred_percent_coordinates):
-    # Write all gene models into one file
+    # Creates three output files
+    # gene_models.fasta.txt contains all the FASTA sequences of the gene models.
+    # Summary_info_human.txt is a human friendly file with basic information about each gene model
+    # Summary_info_computer.txt is a tab deliminated file with the gene_model number on the first column and the transcript IDs in the consecutive columns used for making the gene_models.
     for group in sequences:
 
         with open('gene_models/gene_models.fasta.txt', 'a') as ins:
@@ -749,7 +766,7 @@ def Write_to_files(sequences, group_dictionary, Final_order, ambiguous_contigs, 
                 ins.close()
 
 def Create_separate_gene_model_folder(sequences, Final_order, path):
-    # For IF(Optional args) the user want information separated for each gene models
+    # For IF(Optional args) the user want information for each individual gene model.
     for group in sequences:
 
         if not os.path.exists("%sgene_model%d_folder/" % (path, group)):
@@ -775,8 +792,11 @@ def Create_separate_gene_model_folder(sequences, Final_order, path):
 
 def main(args):
     logging.basicConfig(filename='Error.log',level=logging.DEBUG)
+    with open('Error.log', 'a') as ins:
+        ins.write("\n\n")
+        ins.close()
 
-    # Create folder if not already exists
+    # Create directory if not already exist
     if not os.path.exists("./gene_models/"):
         subprocess.call("mkdir gene_models", shell=True)
 
@@ -788,7 +808,7 @@ def main(args):
 
     subprocess.call("blastn -query %s -db %s -outfmt 6 > gene_models/tmp_blast.txt" % (args.Genome_Walked_seq, args.Genome_Walked_seq), shell=True)
 
-    group_dictionary = Cluster_transcripts(exon_indices, "gene_models/tmp_blast.txt", args.p, args.i)
+    group_dictionary = Group_transcripts(exon_indices, "gene_models/tmp_blast.txt", args.p, args.i)
 
     # If any transcripts were clustered, initiate the second phase. If not, terminate the process.
     if (len(group_dictionary) == 0):
